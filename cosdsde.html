@@ -1,0 +1,885 @@
+<div class="bmr-calculator-widget-host"></div>
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------------------------------------------------------------
+   * HOST DISCOVERY
+   * Uses document.currentScript to find THIS instance's own host div,
+   * so the widget can safely be pasted multiple times on the same page
+   * without any ID collisions.
+   * ------------------------------------------------------------------- */
+  var bmr1ScriptEl = document.currentScript;
+  var bmr1HostEl = bmr1ScriptEl && bmr1ScriptEl.previousElementSibling;
+
+  if(!bmr1HostEl || !bmr1HostEl.classList.contains("bmr-calculator-widget-host")){
+    return; // markup missing or tampered with — bail safely, no page-level side effects
+  }
+  if(bmr1HostEl.shadowRoot){
+    return; // already initialized (e.g. Elementor editor re-run) — avoid double init
+  }
+
+  var bmr1Shadow = bmr1HostEl.attachShadow({ mode: "open" });
+
+  /* ---------------------------------------------------------------------
+   * TEMPLATE: all CSS + markup lives INSIDE the shadow root.
+   * Because of the shadow boundary, none of these selectors (even simple
+   * ones like `button`, `input`, `*`) can ever match anything outside
+   * this shadow tree, and no outside page CSS can reach in either.
+   * ------------------------------------------------------------------- */
+  var bmr1Template = document.createElement("template");
+  bmr1Template.innerHTML = `
+<style>
+  :host{
+    display: block;
+    contain: content;
+  }
+
+  .bmr1-widget{
+    --bmr1-bg: #3E445C;
+    --bmr1-panel: rgba(19, 29, 48, 0.55);
+    --bmr1-panel-border: rgba(120, 170, 255, 0.14);
+    --bmr1-panel-border-hi: rgba(56, 224, 255, 0.45);
+
+    --bmr1-cyan: #34e0ff;
+    --bmr1-cyan-dim: #0fb8d6;
+    --bmr1-cyan-glow: rgba(52, 224, 255, 0.35);
+
+    --bmr1-gold: #f0b93a;
+    --bmr1-gold-glow: rgba(240, 185, 58, 0.35);
+
+    --bmr1-text-hi: #eef4ff;
+    --bmr1-text-mid: #a9b8d6;
+    --bmr1-text-low: #6d7ea3;
+
+    --bmr1-danger: #ff5d7a;
+    --bmr1-success: #45e0a8;
+
+    --bmr1-sp-2: 8px;
+    --bmr1-sp-3: 12px;
+    --bmr1-sp-4: 16px;
+    --bmr1-sp-5: 24px;
+    --bmr1-sp-6: 32px;
+
+    --bmr1-r-sm: 10px;
+    --bmr1-r-md: 16px;
+    --bmr1-r-lg: 24px;
+    --bmr1-r-pill: 999px;
+
+    --bmr1-shadow-card: 0 20px 60px -20px rgba(0,0,0,0.7), 0 2px 0 rgba(255,255,255,0.02) inset;
+    --bmr1-shadow-soft: 0 10px 30px -12px rgba(0,0,0,0.55);
+    --bmr1-glow-cyan: 0 0 0 1px rgba(52,224,255,0.15), 0 0 40px -6px var(--bmr1-cyan-glow);
+    --bmr1-glow-gold: 0 0 0 1px rgba(240,185,58,0.18), 0 0 40px -8px var(--bmr1-gold-glow);
+
+    --bmr1-ease-out: cubic-bezier(.16,1,.3,1);
+    --bmr1-ease-spring: cubic-bezier(.34,1.56,.64,1);
+    --bmr1-t-fast: 150ms var(--bmr1-ease-out);
+    --bmr1-t-med: 320ms var(--bmr1-ease-out);
+    --bmr1-t-slow: 620ms var(--bmr1-ease-out);
+    --bmr1-font: inherit;
+
+    display: block;
+    direction: rtl;
+    font-family: var(--bmr1-font);
+    color: var(--bmr1-text-hi);
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(52,224,255,0.10), transparent 60%),
+      radial-gradient(800px 450px at 100% 0%, rgba(240,185,58,0.08), transparent 55%),
+      var(--bmr1-bg);
+    padding: var(--bmr1-sp-6) var(--bmr1-sp-4);
+    border-radius: var(--bmr1-r-lg);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .bmr1-widget *, .bmr1-widget *::before, .bmr1-widget *::after{ box-sizing: border-box; }
+  @media (prefers-reduced-motion: reduce){
+    .bmr1-widget *{ animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+  .bmr1-widget a:focus-visible,
+  .bmr1-widget button:focus-visible,
+  .bmr1-widget input:focus-visible,
+  .bmr1-widget select:focus-visible,
+  .bmr1-widget [tabindex]:focus-visible{
+    outline: 2px solid var(--bmr1-cyan);
+    outline-offset: 3px;
+    border-radius: var(--bmr1-r-sm);
+  }
+  .bmr1-widget .sr-only{
+    position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+    overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+  }
+
+  /* CARD */
+  .bmr1-card{
+    max-width: 900px;
+    margin: 0 auto;
+    background: var(--bmr1-panel);
+    border: 1px solid var(--bmr1-panel-border);
+    border-radius: var(--bmr1-r-lg);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    box-shadow: var(--bmr1-shadow-card);
+    padding: var(--bmr1-sp-6);
+    position: relative;
+    overflow: hidden;
+    animation: bmr1FadeUp var(--bmr1-t-slow) var(--bmr1-ease-out) both;
+  }
+  .bmr1-card::before{
+    content:"";
+    position:absolute; inset:0;
+    background: linear-gradient(140deg, rgba(255,255,255,0.06), transparent 40%);
+    pointer-events:none;
+  }
+
+  .bmr1-section-label{
+    display:flex; align-items:center; gap: var(--bmr1-sp-2);
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--bmr1-text-mid);
+    margin-bottom: var(--bmr1-sp-3);
+  }
+  .bmr1-goal-header .bmr1-section-label{ margin-bottom: 0; }
+  .bmr1-section-label .bmr1-num{
+    width: 20px; height:20px;
+    border-radius: 50%;
+    display:inline-flex; align-items:center; justify-content:center;
+    background: rgba(52,224,255,0.12);
+    color: var(--bmr1-cyan);
+    font-size: 0.7rem;
+    font-weight: 700;
+  }
+
+  /* GENDER TOGGLE */
+  .bmr1-gender-toggle{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--bmr1-sp-3);
+    margin-bottom: var(--bmr1-sp-4);
+  }
+  .bmr1-gender-option{ position:relative; }
+  .bmr1-gender-option input[type="radio"]{
+    position:absolute; opacity:0; width:1px; height:1px; pointer-events:none;
+  }
+  .bmr1-gender-option label{
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    background: rgba(6,12,22,0.6);
+    border: 1px solid var(--bmr1-panel-border);
+    border-radius: var(--bmr1-r-md);
+    padding: 14px var(--bmr1-sp-4);
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--bmr1-text-mid);
+    cursor: pointer;
+    transition: all var(--bmr1-t-fast);
+    user-select: none;
+  }
+  .bmr1-gender-option label:hover{ border-color: var(--bmr1-panel-border-hi); color: var(--bmr1-text-hi); }
+  .bmr1-gender-option input[type="radio"]:checked + label{
+    border-color: var(--bmr1-cyan);
+    color: var(--bmr1-text-hi);
+    background: linear-gradient(135deg, rgba(52,224,255,0.16), rgba(52,224,255,0.03));
+    box-shadow: var(--bmr1-glow-cyan);
+  }
+  .bmr1-gender-option input[type="radio"]:focus-visible + label{
+    outline: 2px solid var(--bmr1-cyan);
+    outline-offset: 3px;
+  }
+
+  /* INPUTS */
+  .bmr1-input-grid{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--bmr1-sp-4);
+    margin-bottom: var(--bmr1-sp-4);
+  }
+  .bmr1-input-grid.bmr1-grid-3{ grid-template-columns: 1fr 1fr; }
+  @media (max-width: 560px){ .bmr1-input-grid{ grid-template-columns: 1fr; } }
+
+  .bmr1-field{ position: relative; }
+  .bmr1-field label{
+    display:block;
+    font-size: 0.85rem;
+    color: var(--bmr1-text-mid);
+    margin-bottom: var(--bmr1-sp-2);
+    font-weight: 600;
+  }
+  .bmr1-field .bmr1-input-shell{
+    display:flex;
+    align-items:center;
+    background: rgba(6,12,22,0.6);
+    border: 1px solid var(--bmr1-panel-border);
+    border-radius: var(--bmr1-r-md);
+    transition: border-color var(--bmr1-t-fast), box-shadow var(--bmr1-t-fast), transform var(--bmr1-t-fast);
+  }
+  .bmr1-field .bmr1-input-shell:focus-within{
+    border-color: var(--bmr1-panel-border-hi);
+    box-shadow: var(--bmr1-glow-cyan);
+    transform: translateY(-1px);
+  }
+  .bmr1-field.bmr1-error .bmr1-input-shell{
+    border-color: var(--bmr1-danger);
+    box-shadow: 0 0 0 1px rgba(255,93,122,0.25);
+  }
+  .bmr1-field input[type="number"]{
+    flex:1;
+    min-width:0;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--bmr1-text-hi);
+    font-family: var(--bmr1-font);
+    font-size: 1.35rem;
+    font-weight: 600;
+    padding: 14px var(--bmr1-sp-4);
+    -moz-appearance: textfield;
+  }
+  .bmr1-field input[type="number"]::-webkit-outer-spin-button,
+  .bmr1-field input[type="number"]::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  .bmr1-field .bmr1-unit-tag{
+    padding: 0 var(--bmr1-sp-4);
+    color: var(--bmr1-text-low);
+    font-size: 0.85rem;
+    font-weight: 600;
+    border-right: 1px solid var(--bmr1-panel-border);
+    white-space: nowrap;
+  }
+  .bmr1-field select{
+    flex:1;
+    min-width:0;
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--bmr1-text-hi);
+    font-family: var(--bmr1-font);
+    font-size: 1rem;
+    font-weight: 600;
+    padding: 14px var(--bmr1-sp-4);
+    cursor: pointer;
+  }
+  .bmr1-field select option{ background: #1a2338; color: var(--bmr1-text-hi); }
+  .bmr1-field .bmr1-select-caret{
+    padding: 0 var(--bmr1-sp-4);
+    color: var(--bmr1-text-low);
+    pointer-events: none;
+  }
+  .bmr1-error-msg{
+    display:flex; align-items:center; gap:6px;
+    color: var(--bmr1-danger);
+    font-size: 0.78rem;
+    margin-top: var(--bmr1-sp-2);
+    min-height: 1em;
+    opacity:0;
+    transform: translateY(-4px);
+    transition: opacity var(--bmr1-t-fast), transform var(--bmr1-t-fast);
+  }
+  .bmr1-field.bmr1-error .bmr1-error-msg{ opacity:1; transform:none; }
+
+  /* RESULT CARD */
+  .bmr1-result-section{
+    display:grid;
+    grid-template-columns: 1fr 220px;
+    gap: var(--bmr1-sp-6);
+    align-items:center;
+    padding: var(--bmr1-sp-6);
+    border-radius: var(--bmr1-r-lg);
+    background: radial-gradient(600px 300px at 90% 0%, rgba(240,185,58,0.08), transparent 60%), rgba(5,10,20,0.55);
+    border: 1px solid var(--bmr1-panel-border-hi);
+    box-shadow: var(--bmr1-glow-cyan);
+    position: relative;
+    margin-top: var(--bmr1-sp-2);
+  }
+  .bmr1-result-eyebrow{
+    color: var(--bmr1-text-mid);
+    font-size: 0.82rem;
+    font-weight: 700;
+    margin-bottom: var(--bmr1-sp-2);
+    display:flex; gap:8px; align-items:center;
+  }
+  .bmr1-result-eyebrow .bmr1-activity-name{ color: var(--bmr1-gold); }
+
+  .bmr1-result-number{
+    font-family: var(--bmr1-font);
+    font-weight: 800;
+    font-size: clamp(2.2rem, 6.4vw, 3.4rem);
+    line-height: 1;
+    letter-spacing: -0.02em;
+    background: linear-gradient(90deg, #fff, var(--bmr1-cyan) 65%, var(--bmr1-gold) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    display:flex;
+    align-items:baseline;
+    gap: 10px;
+  }
+  .bmr1-result-number .bmr1-unit{
+    font-size: 0.32em;
+    font-weight: 600;
+    color: var(--bmr1-text-mid);
+    -webkit-text-fill-color: var(--bmr1-text-mid);
+  }
+
+  .bmr1-result-sub{
+    color: var(--bmr1-text-low);
+    font-size: 0.85rem;
+    margin-top: var(--bmr1-sp-2);
+  }
+
+  .bmr1-bmr-line{
+    display:flex; align-items:baseline; gap:8px;
+    margin-top: var(--bmr1-sp-4);
+    padding-top: var(--bmr1-sp-4);
+    border-top: 1px dashed var(--bmr1-panel-border);
+    color: var(--bmr1-text-mid);
+    font-size: 0.9rem;
+  }
+  .bmr1-bmr-line b{
+    color: var(--bmr1-text-hi);
+    font-size: 1.15rem;
+    font-weight: 800;
+  }
+
+  .bmr1-gauge-wrap{ display:flex; flex-direction:column; align-items:center; gap: var(--bmr1-sp-2); }
+  .bmr1-gauge-track{ fill:none; stroke: rgba(255,255,255,0.07); stroke-width: 10; }
+  .bmr1-gauge-fill{
+    fill:none; stroke-width: 10; stroke-linecap: round;
+    transition: stroke-dashoffset 700ms var(--bmr1-ease-spring);
+    filter: drop-shadow(0 0 8px var(--bmr1-cyan-glow));
+  }
+  .bmr1-gauge-center-value{
+    font-family: var(--bmr1-font);
+    font-weight: 700;
+    font-size: 1.05rem;
+    fill: var(--bmr1-text-hi);
+  }
+  .bmr1-gauge-caption{ color: var(--bmr1-text-low); font-size: 0.76rem; text-align:center; max-width: 160px; margin:0; }
+
+  @media (max-width: 640px){
+    .bmr1-card{ padding: var(--bmr1-sp-5); }
+    .bmr1-result-section{ grid-template-columns: 1fr; text-align:center; padding: var(--bmr1-sp-5); }
+    .bmr1-result-eyebrow{ justify-content:center; }
+    .bmr1-result-number{ justify-content:center; }
+    .bmr1-bmr-line{ justify-content:center; }
+  }
+
+  /* GOAL CARDS */
+  .bmr1-goal-section{ margin-top: var(--bmr1-sp-6); }
+  .bmr1-goal-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom: var(--bmr1-sp-3); flex-wrap: wrap; gap: var(--bmr1-sp-3); }
+  .bmr1-copy-btn{
+    display:inline-flex; align-items:center; gap:8px;
+    background: var(--bmr1-panel);
+    border: 1px solid var(--bmr1-panel-border);
+    color: var(--bmr1-text-hi);
+    font-family: var(--bmr1-font);
+    font-weight: 600;
+    font-size: 0.82rem;
+    padding: 9px 16px;
+    border-radius: var(--bmr1-r-pill);
+    cursor:pointer;
+    transition: all var(--bmr1-t-fast);
+  }
+  .bmr1-copy-btn:hover{ border-color: var(--bmr1-panel-border-hi); box-shadow: var(--bmr1-glow-cyan); transform: translateY(-1px); }
+  .bmr1-copy-btn.bmr1-copied{ color: var(--bmr1-success); border-color: var(--bmr1-success); }
+
+  .bmr1-goal-table{
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--bmr1-sp-3);
+  }
+  @media (max-width: 640px){ .bmr1-goal-table{ grid-template-columns: 1fr; } }
+  .bmr1-goal-row{
+    background: rgba(6,12,22,0.5);
+    border: 1px solid var(--bmr1-panel-border);
+    border-radius: var(--bmr1-r-md);
+    padding: var(--bmr1-sp-4);
+    transition: all var(--bmr1-t-fast);
+    position: relative;
+    overflow:hidden;
+    animation: bmr1RowIn 380ms var(--bmr1-ease-out) both;
+  }
+  .bmr1-goal-row:hover{ border-color: var(--bmr1-panel-border-hi); transform: translateY(-2px); box-shadow: var(--bmr1-shadow-soft); }
+  .bmr1-goal-row.bmr1-hero{
+    border-color: var(--bmr1-gold);
+    background: linear-gradient(135deg, rgba(240,185,58,0.14), rgba(240,185,58,0.03));
+  }
+  .bmr1-goal-row .bmr1-goal-icon{ font-size: 1.3rem; margin-bottom: 6px; display:block; }
+  .bmr1-goal-row .bmr1-goal-label{ font-size: 0.8rem; color: var(--bmr1-text-mid); font-weight:700; }
+  .bmr1-goal-row .bmr1-goal-value{
+    font-family: var(--bmr1-font);
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: var(--bmr1-text-hi);
+    margin-top: 6px;
+  }
+  .bmr1-goal-row .bmr1-goal-unit{ font-size:.55em; color: var(--bmr1-text-low); font-weight:600; }
+  .bmr1-goal-row.bmr1-hero .bmr1-goal-value{ color: var(--bmr1-gold); }
+
+  /* ANIMATIONS */
+  @keyframes bmr1FadeUp{
+    from{ opacity:0; transform: translateY(14px); }
+    to{ opacity:1; transform: translateY(0); }
+  }
+  @keyframes bmr1PopIn{
+    0%{ transform: scale(0.94); opacity:0; }
+    60%{ transform: scale(1.02); opacity:1; }
+    100%{ transform: scale(1); }
+  }
+  .bmr1-pop{ animation: bmr1PopIn 420ms var(--bmr1-ease-spring) both; }
+  @keyframes bmr1RowIn{
+    from{ opacity:0; transform: translateY(8px); }
+    to{ opacity:1; transform: translateY(0); }
+  }
+</style>
+
+<div class="bmr1-widget" dir="rtl" lang="fa">
+  <section class="bmr1-card" aria-labelledby="bmr1-calc-heading">
+    <h2 id="bmr1-calc-heading" class="sr-only">فرم محاسبه متابولیسم پایه (BMR) و کالری روزانه</h2>
+
+    <div class="bmr1-section-label"><span class="bmr1-num">۱</span> اطلاعات بدنی خود را وارد کنید</div>
+
+    <fieldset class="bmr1-gender-toggle" style="border:none; padding:0; margin:0 0 16px;">
+      <legend class="sr-only">جنسیت</legend>
+      <div class="bmr1-gender-option">
+        <input type="radio" name="bmr1Gender" id="bmr1GenderMale" value="male" checked>
+        <label for="bmr1GenderMale">👨 مرد</label>
+      </div>
+      <div class="bmr1-gender-option">
+        <input type="radio" name="bmr1Gender" id="bmr1GenderFemale" value="female">
+        <label for="bmr1GenderFemale">👩 زن</label>
+      </div>
+    </fieldset>
+
+    <div class="bmr1-input-grid">
+      <div class="bmr1-field" id="bmr1AgeField">
+        <label for="bmr1AgeInput">سن</label>
+        <div class="bmr1-input-shell">
+          <input type="number" id="bmr1AgeInput" inputmode="numeric" step="1" min="0"
+                 placeholder="مثلاً ۲۸" aria-describedby="bmr1AgeError" autocomplete="off">
+          <span class="bmr1-unit-tag">سال</span>
+        </div>
+        <div class="bmr1-error-msg" id="bmr1AgeError" role="alert">سن باید بین ۱۰ تا ۹۰ سال باشد</div>
+      </div>
+
+      <div class="bmr1-field" id="bmr1WeightField">
+        <label for="bmr1WeightInput">وزن بدن</label>
+        <div class="bmr1-input-shell">
+          <input type="number" id="bmr1WeightInput" inputmode="decimal" step="0.5" min="0"
+                 placeholder="مثلاً ۷۲" aria-describedby="bmr1WeightError" autocomplete="off">
+          <span class="bmr1-unit-tag">کیلوگرم</span>
+        </div>
+        <div class="bmr1-error-msg" id="bmr1WeightError" role="alert">مقدار وزن باید بزرگ‌تر از صفر باشد</div>
+      </div>
+
+      <div class="bmr1-field" id="bmr1HeightField">
+        <label for="bmr1HeightInput">قد</label>
+        <div class="bmr1-input-shell">
+          <input type="number" id="bmr1HeightInput" inputmode="decimal" step="0.5" min="0"
+                 placeholder="مثلاً ۱۷۵" aria-describedby="bmr1HeightError" autocomplete="off">
+          <span class="bmr1-unit-tag">سانتی‌متر</span>
+        </div>
+        <div class="bmr1-error-msg" id="bmr1HeightError" role="alert">مقدار قد باید بین ۵۰ تا ۲۵۰ سانتی‌متر باشد</div>
+      </div>
+
+      <div class="bmr1-field" id="bmr1ActivityField">
+        <label for="bmr1ActivityInput">سطح فعالیت بدنی</label>
+        <div class="bmr1-input-shell">
+          <select id="bmr1ActivityInput" aria-describedby="bmr1ActivityError">
+            <option value="1.2">کم‌تحرک</option>
+            <option value="1.375">فعالیت سبک</option>
+            <option value="1.55" selected>فعالیت متوسط</option>
+            <option value="1.725">فعالیت زیاد</option>
+            <option value="1.9">فعالیت بسیار زیاد</option>
+          </select>
+          <span class="bmr1-select-caret" aria-hidden="true">▾</span>
+        </div>
+        <div class="bmr1-error-msg" id="bmr1ActivityError" role="alert">سطح فعالیت را انتخاب کنید</div>
+      </div>
+    </div>
+
+    <div class="bmr1-result-section bmr1-pop" id="bmr1ResultSection" aria-live="polite">
+      <div>
+        <div class="bmr1-result-eyebrow">
+          کالری روزانه مورد نیاز (TDEE) · سطح فعالیت <span class="bmr1-activity-name" id="bmr1ResultActivityName">—</span>
+        </div>
+        <div class="bmr1-result-number">
+          <span id="bmr1ResultValue">۰</span>
+          <span class="bmr1-unit">کالری در روز</span>
+        </div>
+        <div class="bmr1-result-sub" id="bmr1ResultSub">اطلاعات بدنی را وارد کنید تا محاسبه آغاز شود</div>
+        <div class="bmr1-bmr-line">
+          🔥 متابولیسم پایه (BMR): <b id="bmr1BmrValue">۰</b> <span>کالری در روز</span>
+        </div>
+      </div>
+
+      <div class="bmr1-gauge-wrap">
+        <svg width="150" height="150" viewBox="0 0 150 150" role="img" aria-label="نمودار موقعیت سطح فعالیت بدنی">
+          <defs>
+            <linearGradient id="bmr1GaugeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#34e0ff"/>
+              <stop offset="100%" stop-color="#f0b93a"/>
+            </linearGradient>
+          </defs>
+          <circle class="bmr1-gauge-track" cx="75" cy="75" r="60"/>
+          <circle class="bmr1-gauge-fill" id="bmr1GaugeFill" cx="75" cy="75" r="60"
+                  stroke="url(#bmr1GaugeGradient)"
+                  stroke-dasharray="377" stroke-dashoffset="377"
+                  transform="rotate(-90 75 75)"/>
+          <text x="75" y="70" text-anchor="middle" class="bmr1-gauge-center-value" id="bmr1GaugeValue">۰</text>
+          <text x="75" y="90" text-anchor="middle" fill="#6d7ea3" font-size="10">×ضریب</text>
+        </svg>
+        <p class="bmr1-gauge-caption">ضریب فعالیت در محاسبه TDEE</p>
+      </div>
+    </div>
+
+    <div class="bmr1-goal-section">
+      <div class="bmr1-goal-header">
+        <div class="bmr1-section-label"><span class="bmr1-num">۲</span> کالری مورد نیاز بر اساس هدف</div>
+        <button type="button" class="bmr1-copy-btn" id="bmr1CopyBtn" aria-label="کپی نتیجه محاسبه BMR">
+          <span id="bmr1CopyIcon" aria-hidden="true">📋</span> <span id="bmr1CopyLabel">کپی نتیجه</span>
+        </button>
+      </div>
+      <div class="bmr1-goal-table" id="bmr1GoalTable"></div>
+    </div>
+  </section>
+</div>
+`;
+
+  bmr1Shadow.appendChild(bmr1Template.content.cloneNode(true));
+
+  /* ---------------------------------------------------------------------
+   * WIDGET LOGIC — same architecture and coding style as the original
+   * BMI calculator widget, with the business logic replaced by
+   * Mifflin-St Jeor BMR + TDEE calculation.
+   * All DOM lookups go through the shadow root (bmr1Shadow), never
+   * through `document`, so this instance can never touch or be touched
+   * by anything outside its own shadow tree.
+   * ------------------------------------------------------------------- */
+  var BMR1_STORAGE_KEY = "bmr-calculator-widget-state-v1";
+
+  var bmr1State = {
+    gender: "male",
+    age: null,
+    weight: null,
+    height: null,
+    activity: 1.55
+  };
+
+  var BMR1_ACTIVITY_LABELS = {
+    "1.2":   "کم‌تحرک",
+    "1.375": "فعالیت سبک",
+    "1.55":  "فعالیت متوسط",
+    "1.725": "فعالیت زیاد",
+    "1.9":   "فعالیت بسیار زیاد"
+  };
+
+  var BMR1_GAUGE_MIN = 1.2;
+  var BMR1_GAUGE_MAX = 1.9;
+  var BMR1_GAUGE_CIRCUMFERENCE = 2 * Math.PI * 60;
+
+  var BMR1_GOALS = [
+    { key: "loss",     label: "کاهش وزن",   icon: "📉", deltaKcal: -500 },
+    { key: "maintain", label: "حفظ وزن",    icon: "⚖️",  deltaKcal: 0    },
+    { key: "gain",     label: "افزایش وزن", icon: "📈", deltaKcal: 500  }
+  ];
+
+  function bmr1Debounce(fn, wait){
+    var timer = null;
+    return function(){
+      var args = arguments, ctx = this;
+      clearTimeout(timer);
+      timer = setTimeout(function(){ fn.apply(ctx, args); }, wait);
+    };
+  }
+
+  function bmr1ToEnglishDigits(str){
+    if(typeof str !== "string") return str;
+    var fa = "۰۱۲۳۴۵۶۷۸۹";
+    return str.replace(/[۰-۹]/g, function(d){ return fa.indexOf(d); });
+  }
+
+  function bmr1FormatNumber(n, decimals){
+    decimals = decimals === undefined ? 0 : decimals;
+    if(!isFinite(n)) return "۰";
+    var rounded = Math.round(n * Math.pow(10, decimals)) / Math.pow(10, decimals);
+    try{
+      return new Intl.NumberFormat("fa-IR", { maximumFractionDigits: decimals }).format(rounded);
+    }catch(e){
+      return String(rounded);
+    }
+  }
+
+  function bmr1Clamp(n, min, max){ return Math.max(min, Math.min(max, n)); }
+
+  function bmr1LoadPersistedState(){
+    try{
+      var raw = window.localStorage.getItem(BMR1_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    }catch(e){ return null; }
+  }
+
+  function bmr1PersistState(){
+    try{
+      window.localStorage.setItem(BMR1_STORAGE_KEY, JSON.stringify({
+        gender: bmr1State.gender,
+        age: bmr1State.age,
+        weight: bmr1State.weight,
+        height: bmr1State.height,
+        activity: bmr1State.activity
+      }));
+    }catch(e){ /* storage unavailable — ignore */ }
+  }
+
+  function bmr1ValidateAge(a){
+    if(a === null || a === undefined || isNaN(a)) return { valid:false, message:"سن را وارد کنید" };
+    if(a < 10 || a > 90) return { valid:false, message:"سن باید بین ۱۰ تا ۹۰ سال باشد" };
+    return { valid:true };
+  }
+
+  function bmr1ValidateWeight(w){
+    if(w === null || w === undefined || isNaN(w)) return { valid:false, message:"وزن را وارد کنید" };
+    if(w <= 0) return { valid:false, message:"مقدار وزن باید بزرگ‌تر از صفر باشد" };
+    if(w > 400) return { valid:false, message:"مقدار وارد شده غیرمنطقی به نظر می‌رسد" };
+    return { valid:true };
+  }
+
+  function bmr1ValidateHeight(h){
+    if(h === null || h === undefined || isNaN(h)) return { valid:false, message:"قد را وارد کنید" };
+    if(h < 50 || h > 250) return { valid:false, message:"مقدار قد باید بین ۵۰ تا ۲۵۰ سانتی‌متر باشد" };
+    return { valid:true };
+  }
+
+  function bmr1CalculateBMR(gender, weight, heightCm, age){
+    var base = (10 * weight) + (6.25 * heightCm) - (5 * age);
+    var result = gender === "female" ? (base - 161) : (base + 5);
+    return isFinite(result) && result > 0 ? result : 0;
+  }
+
+  function bmr1CalculateTDEE(bmr, activityMultiplier){
+    var result = bmr * activityMultiplier;
+    return isFinite(result) && result > 0 ? result : 0;
+  }
+
+  /* DOM REFERENCES — resolved against the shadow root, not document */
+  var bmr1El = {
+    genderMale: bmr1Shadow.getElementById("bmr1GenderMale"),
+    genderFemale: bmr1Shadow.getElementById("bmr1GenderFemale"),
+    ageInput: bmr1Shadow.getElementById("bmr1AgeInput"),
+    weightInput: bmr1Shadow.getElementById("bmr1WeightInput"),
+    heightInput: bmr1Shadow.getElementById("bmr1HeightInput"),
+    activityInput: bmr1Shadow.getElementById("bmr1ActivityInput"),
+    ageField: bmr1Shadow.getElementById("bmr1AgeField"),
+    weightField: bmr1Shadow.getElementById("bmr1WeightField"),
+    heightField: bmr1Shadow.getElementById("bmr1HeightField"),
+    ageError: bmr1Shadow.getElementById("bmr1AgeError"),
+    weightError: bmr1Shadow.getElementById("bmr1WeightError"),
+    heightError: bmr1Shadow.getElementById("bmr1HeightError"),
+    resultValue: bmr1Shadow.getElementById("bmr1ResultValue"),
+    resultSub: bmr1Shadow.getElementById("bmr1ResultSub"),
+    resultActivityName: bmr1Shadow.getElementById("bmr1ResultActivityName"),
+    resultSection: bmr1Shadow.getElementById("bmr1ResultSection"),
+    bmrValue: bmr1Shadow.getElementById("bmr1BmrValue"),
+    gaugeFill: bmr1Shadow.getElementById("bmr1GaugeFill"),
+    gaugeValue: bmr1Shadow.getElementById("bmr1GaugeValue"),
+    goalTable: bmr1Shadow.getElementById("bmr1GoalTable"),
+    copyBtn: bmr1Shadow.getElementById("bmr1CopyBtn"),
+    copyIcon: bmr1Shadow.getElementById("bmr1CopyIcon"),
+    copyLabel: bmr1Shadow.getElementById("bmr1CopyLabel"),
+  };
+
+  function bmr1RenderFieldError(fieldEl, isValid){
+    fieldEl.classList.toggle("bmr1-error", !isValid);
+  }
+
+  function bmr1RenderResult(bmrValue, tdeeValue, activityMultiplier){
+    var activityLabel = BMR1_ACTIVITY_LABELS[String(activityMultiplier)] || "—";
+    bmr1El.resultActivityName.textContent = tdeeValue > 0 ? activityLabel : "—";
+
+    bmr1El.resultValue.textContent = bmr1FormatNumber(tdeeValue, 0);
+    bmr1El.bmrValue.textContent = bmr1FormatNumber(bmrValue, 0);
+
+    bmr1El.resultSection.classList.remove("bmr1-pop");
+    void bmr1El.resultSection.offsetWidth;
+    bmr1El.resultSection.classList.add("bmr1-pop");
+
+    bmr1El.resultSub.textContent = tdeeValue > 0
+      ? ("بر اساس " + bmr1FormatNumber(bmr1State.weight,1) + " کیلوگرم، " + bmr1FormatNumber(bmr1State.height,0) + " سانتی‌متر و " + bmr1FormatNumber(bmr1State.age,0) + " سال سن")
+      : "اطلاعات بدنی را وارد کنید تا محاسبه آغاز شود";
+
+    var gaugePct = tdeeValue > 0
+      ? bmr1Clamp(((activityMultiplier - BMR1_GAUGE_MIN) / (BMR1_GAUGE_MAX - BMR1_GAUGE_MIN)) * 100, 0, 100)
+      : 0;
+    var offset = BMR1_GAUGE_CIRCUMFERENCE * (1 - gaugePct / 100);
+    bmr1El.gaugeFill.setAttribute("stroke-dasharray", String(BMR1_GAUGE_CIRCUMFERENCE));
+    bmr1El.gaugeFill.style.strokeDashoffset = String(offset);
+    bmr1El.gaugeValue.textContent = tdeeValue > 0 ? ("×" + bmr1FormatNumber(activityMultiplier, 3)) : "۰";
+  }
+
+  function bmr1RenderGoalTable(tdeeValue){
+    var frag = document.createDocumentFragment();
+
+    BMR1_GOALS.forEach(function(goal, idx){
+      var value = tdeeValue > 0 ? Math.max(0, tdeeValue + goal.deltaKcal) : 0;
+      var row = document.createElement("div");
+      row.className = "bmr1-goal-row" + (goal.key === "maintain" ? " bmr1-hero" : "");
+      row.style.animationDelay = (idx * 40) + "ms";
+      row.innerHTML =
+        '<span class="bmr1-goal-icon" aria-hidden="true">' + goal.icon + '</span>' +
+        '<div class="bmr1-goal-label">' + goal.label + '</div>' +
+        '<div class="bmr1-goal-value">' + bmr1FormatNumber(value, 0) + ' <span class="bmr1-goal-unit">کالری/روز</span></div>';
+      frag.appendChild(row);
+    });
+
+    bmr1El.goalTable.innerHTML = "";
+    bmr1El.goalTable.appendChild(frag);
+  }
+
+  function bmr1Render(){
+    var ageCheck = bmr1ValidateAge(bmr1State.age);
+    var weightCheck = bmr1ValidateWeight(bmr1State.weight);
+    var heightCheck = bmr1ValidateHeight(bmr1State.height);
+
+    bmr1RenderFieldError(bmr1El.ageField, ageCheck.valid || bmr1State.age === null);
+    bmr1RenderFieldError(bmr1El.weightField, weightCheck.valid || bmr1State.weight === null);
+    bmr1RenderFieldError(bmr1El.heightField, heightCheck.valid || bmr1State.height === null);
+    bmr1El.ageError.textContent = ageCheck.message || "";
+    bmr1El.weightError.textContent = weightCheck.message || "";
+    bmr1El.heightError.textContent = heightCheck.message || "";
+
+    var isValid = ageCheck.valid && weightCheck.valid && heightCheck.valid;
+    var bmrValue = isValid ? bmr1CalculateBMR(bmr1State.gender, bmr1State.weight, bmr1State.height, bmr1State.age) : 0;
+    var tdeeValue = isValid ? bmr1CalculateTDEE(bmrValue, bmr1State.activity) : 0;
+
+    bmr1RenderResult(bmrValue, tdeeValue, bmr1State.activity);
+    bmr1RenderGoalTable(tdeeValue);
+  }
+
+  var bmr1DebouncedRender = bmr1Debounce(function(){ bmr1Render(); bmr1PersistState(); }, 180);
+
+  function bmr1HandleGenderChange(e){
+    bmr1State.gender = e.target.value;
+    bmr1DebouncedRender();
+  }
+
+  function bmr1HandleAgeInput(e){
+    var raw = bmr1ToEnglishDigits(e.target.value);
+    bmr1State.age = raw === "" ? null : parseFloat(raw);
+    bmr1DebouncedRender();
+  }
+
+  function bmr1HandleWeightInput(e){
+    var raw = bmr1ToEnglishDigits(e.target.value);
+    bmr1State.weight = raw === "" ? null : parseFloat(raw);
+    bmr1DebouncedRender();
+  }
+
+  function bmr1HandleHeightInput(e){
+    var raw = bmr1ToEnglishDigits(e.target.value);
+    bmr1State.height = raw === "" ? null : parseFloat(raw);
+    bmr1DebouncedRender();
+  }
+
+  function bmr1HandleActivityChange(e){
+    bmr1State.activity = parseFloat(e.target.value);
+    bmr1DebouncedRender();
+  }
+
+  function bmr1BuildCopyText(bmrValue, tdeeValue){
+    var lines = [
+      "متابولیسم پایه (BMR): " + bmr1FormatNumber(bmrValue,0) + " کالری در روز",
+      "کالری روزانه مورد نیاز (TDEE): " + bmr1FormatNumber(tdeeValue,0) + " کالری در روز",
+      "—".repeat(10)
+    ];
+    BMR1_GOALS.forEach(function(goal){
+      var value = tdeeValue > 0 ? Math.max(0, tdeeValue + goal.deltaKcal) : 0;
+      lines.push(goal.label + "  →  " + bmr1FormatNumber(value,0) + " کالری/روز");
+    });
+    return lines.join("\n");
+  }
+
+  function bmr1HandleCopyClick(){
+    var ageCheck = bmr1ValidateAge(bmr1State.age);
+    var weightCheck = bmr1ValidateWeight(bmr1State.weight);
+    var heightCheck = bmr1ValidateHeight(bmr1State.height);
+    var isValid = ageCheck.valid && weightCheck.valid && heightCheck.valid;
+    var bmrValue = isValid ? bmr1CalculateBMR(bmr1State.gender, bmr1State.weight, bmr1State.height, bmr1State.age) : 0;
+    var tdeeValue = isValid ? bmr1CalculateTDEE(bmrValue, bmr1State.activity) : 0;
+
+    var text = bmr1BuildCopyText(bmrValue, tdeeValue);
+
+    function bmr1ShowCopiedFeedback(){
+      bmr1El.copyBtn.classList.add("bmr1-copied");
+      bmr1El.copyIcon.textContent = "✅";
+      bmr1El.copyLabel.textContent = "کپی شد!";
+      setTimeout(function(){
+        bmr1El.copyBtn.classList.remove("bmr1-copied");
+        bmr1El.copyIcon.textContent = "📋";
+        bmr1El.copyLabel.textContent = "کپی نتیجه";
+      }, 1800);
+    }
+
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(bmr1ShowCopiedFeedback, function(){
+        bmr1CopyFallback(text);
+        bmr1ShowCopiedFeedback();
+      });
+    }else{
+      bmr1CopyFallback(text);
+      bmr1ShowCopiedFeedback();
+    }
+  }
+
+  // Minimal, self-cleaning fallback: briefly touches document.body only
+  // because execCommand("copy") requires a light-DOM selection; the
+  // element is created and removed synchronously and never left behind.
+  function bmr1CopyFallback(text){
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.top = "-9999px";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try{ document.execCommand("copy"); }catch(_){}
+    document.body.removeChild(ta);
+  }
+
+  function bmr1AttachEvents(){
+    bmr1El.genderMale.addEventListener("change", bmr1HandleGenderChange);
+    bmr1El.genderFemale.addEventListener("change", bmr1HandleGenderChange);
+    bmr1El.ageInput.addEventListener("input", bmr1HandleAgeInput);
+    bmr1El.weightInput.addEventListener("input", bmr1HandleWeightInput);
+    bmr1El.heightInput.addEventListener("input", bmr1HandleHeightInput);
+    bmr1El.activityInput.addEventListener("change", bmr1HandleActivityChange);
+    bmr1El.copyBtn.addEventListener("click", bmr1HandleCopyClick);
+  }
+
+  function bmr1RestoreFromStorage(){
+    var saved = bmr1LoadPersistedState();
+    if(!saved) return;
+    if(saved.gender === "male" || saved.gender === "female"){
+      bmr1State.gender = saved.gender;
+      if(saved.gender === "female"){
+        bmr1El.genderFemale.checked = true;
+      }else{
+        bmr1El.genderMale.checked = true;
+      }
+    }
+    if(typeof saved.age === "number"){ bmr1State.age = saved.age; bmr1El.ageInput.value = saved.age; }
+    if(typeof saved.weight === "number"){ bmr1State.weight = saved.weight; bmr1El.weightInput.value = saved.weight; }
+    if(typeof saved.height === "number"){ bmr1State.height = saved.height; bmr1El.heightInput.value = saved.height; }
+    if(typeof saved.activity === "number" && BMR1_ACTIVITY_LABELS[String(saved.activity)]){
+      bmr1State.activity = saved.activity;
+      bmr1El.activityInput.value = String(saved.activity);
+    }
+  }
+
+  function bmr1Init(){
+    bmr1RestoreFromStorage();
+    bmr1AttachEvents();
+    bmr1Render();
+  }
+
+  bmr1Init(); // shadow content already exists synchronously — no need to wait for DOMContentLoaded
+})();
+</script>
